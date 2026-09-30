@@ -81,6 +81,16 @@ public class GitSyncService {
                 this.git = Git.init().setDirectory(repoDir).call();
             }
 
+            if (this.git != null && remoteUrl != null && !remoteUrl.isBlank()) {
+                org.eclipse.jgit.lib.StoredConfig config = this.git.getRepository().getConfig();
+                if (config.getString("remote", "origin", "url") == null) {
+                    config.setString("remote", "origin", "url", remoteUrl);
+                    config.setString("remote", "origin", "fetch", "+refs/heads/*:refs/remotes/origin/*");
+                    config.save();
+                    log.info("Configured remote origin URL to '{}'", remoteUrl);
+                }
+            }
+
             syncFromDiskToDatabase();
 
         } catch (Exception e) {
@@ -119,7 +129,7 @@ public class GitSyncService {
             log.info("Git pull finished. Successful: {}", result.isSuccessful());
             syncFromDiskToDatabase();
         } catch (Exception e) {
-            log.error("Git pull failed: {}", e.getMessage(), e);
+            log.warn("Git pull skipped/failed: {}", e.getMessage());
         }
     }
 

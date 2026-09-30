@@ -145,4 +145,31 @@ class PluginIntegrationTests {
             .andExpect(jsonPath("$.author", is("AI:Gemini")))
             .andExpect(jsonPath("$.channel", is("NIGHTLY")));
     }
+
+    @Test
+    @Order(6)
+    void testAdminEndpoints() throws Exception {
+        // 1. Unauthorized without token -> 401
+        mockMvc.perform(get("/api/v1/admin/plugins"))
+            .andExpect(status().isUnauthorized());
+
+        // 2. Authorized listing -> 200 OK
+        mockMvc.perform(get("/api/v1/admin/plugins")
+                .header("X-Admin-Token", "aggregator-admin-token"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasSize(greaterThanOrEqualTo(1))));
+
+        // 3. Promote testplugin to STABLE
+        mockMvc.perform(put("/api/v1/admin/plugins/testplugin/channel")
+                .param("channel", "STABLE")
+                .header("X-Admin-Token", "aggregator-admin-token"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.channel", is("STABLE")));
+
+        // 4. Toggle active status
+        mockMvc.perform(put("/api/v1/admin/plugins/testplugin/toggle-active")
+                .header("X-Admin-Token", "aggregator-admin-token"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.isActive", is(false)));
+    }
 }

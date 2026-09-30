@@ -97,8 +97,12 @@ public class AppProperties {
 
     public static class Security {
         private String llmApiToken = "dev-llm-token-12345";
+        private String adminToken = "aggregator-admin-token";
 
         public String getLlmApiToken() { return llmApiToken; }
         public void setLlmApiToken(String llmApiToken) { this.llmApiToken = llmApiToken; }
+
+        public String getAdminToken() { return adminToken; }
+        public void setAdminToken(String adminToken) { this.adminToken = adminToken; }
     }
 }

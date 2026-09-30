@@ -67,3 +67,4 @@ app:
 
   security:
     llm-api-token: ${APP_SECURITY_LLM_API_TOKEN:dev-llm-token-12345}
+    admin-token: ${APP_SECURITY_ADMIN_TOKEN:aggregator-admin-token}
