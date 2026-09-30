@@ -1,3 +1,69 @@
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 20
+      min-spare: 5
+    max-connections: 100
+    connection-timeout: 20000
+
 spring:
   application:
-    name: Aggregator-backend
+    name: aggregator-backend
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/aggregator_registry}
+    username: ${SPRING_DATASOURCE_USERNAME:aggregator}
+    password: ${SPRING_DATASOURCE_PASSWORD:aggregator_secret}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: AggregatorHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 20000
+      max-lifetime: 1800000
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 25
+
+  task:
+    execution:
+      pool:
+        core-size: 2
+        max-size: 5
+        queue-capacity: 100
+        thread-name-prefix: async-task-
+
+app:
+  git:
+    repo-path: ${APP_GIT_REPO_PATH:./data/plugins-repo}
+    remote-url: ${APP_GIT_REMOTE_URL:https://github.com/DeployedReject/Aggregator-Plugins.git}
+    branch: ${APP_GIT_BRANCH:main}
+    auth:
+      username: ${APP_GIT_AUTH_USERNAME:}
+      token: ${APP_GIT_AUTH_TOKEN:}
+    sync:
+      polling-enabled: true
+      polling-interval-ms: 300000
+      webhook-secret: ${APP_GIT_WEBHOOK_SECRET:dev-secret-key}
+
+  discord:
+    webhook-url: ${APP_DISCORD_WEBHOOK_URL:}
+
+  moderation:
+    dislike-threshold: 10
+    dislike-ratio-threshold: 0.40
+    min-votes-for-ratio: 5
+
+  security:
+    llm-api-token: ${APP_SECURITY_LLM_API_TOKEN:dev-llm-token-12345}
