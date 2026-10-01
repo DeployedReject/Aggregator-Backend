@@ -22,10 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Tokyo Night themed Standalone Terminal UI for Aggregator Plugin Registry moderation.
- * Features instant single-key and vim-key navigation, visual row tracking, and localhost-only security.
- */
 public class StandaloneTui {
 
     private final String baseUrl;
@@ -62,7 +58,7 @@ public class StandaloneTui {
         Screen screen = null;
         try {
             DefaultTerminalFactory terminalFactory = new DefaultTerminalFactory();
-            terminalFactory.setTerminalEmulatorTitle("Aggregator Registry Dashboard • Tokyo Night");
+            terminalFactory.setTerminalEmulatorTitle("Aggregator Registry");
             screen = terminalFactory.createScreen();
             screen.startScreen();
 
@@ -78,92 +74,87 @@ public class StandaloneTui {
 
             Panel mainPanel = new Panel(new LinearLayout(Direction.VERTICAL));
 
-            // 1. Header Title
-            Label title = new Label("⚡ AGGREGATOR REGISTRY DASHBOARD  •  Tokyo Night Edition  •  " + baseUrl);
+            Label title = new Label("Aggregator Registry  [" + baseUrl + "]");
             title.setForegroundColor(TokyoNightTheme.CYAN);
             mainPanel.addComponent(title);
 
-            // 2. Hotkey Helper Bar
-            Label hotkeyBar = new Label("Keys: [↑/↓] or [J/K] Navigate | [Enter] View Code | [Space/D] Toggle Active | [S] Promote | [N] Demote | [P] Sync | [R] Refresh | [Q] Quit");
+            Label hotkeyBar = new Label("[S] Promote  [N] Demote  [Space/D] Toggle  [Enter/V] Code  [P] Sync  [R] Refresh  [Q] Quit");
             hotkeyBar.setForegroundColor(TokyoNightTheme.ACCENT);
             mainPanel.addComponent(hotkeyBar);
 
             mainPanel.addComponent(new EmptySpace(new TerminalSize(1, 1)));
 
-            // 3. Plugin Table
             Table<String> table = new Table<>("ID", "Name", "Channel", "Version", "Likes", "Dislikes", "Dislike%", "Status");
             table.setCellSelection(false);
             table.setEscapeByArrowKey(false);
             table.setPreferredSize(new TerminalSize(100, 13));
 
-            Border tableBorder = table.withBorder(Borders.singleLine("Registry Plugins [↑/↓ or J/K to Navigate • Enter to View]"));
+            Border tableBorder = table.withBorder(Borders.singleLine("Plugins"));
             mainPanel.addComponent(tableBorder);
 
             mainPanel.addComponent(new EmptySpace(new TerminalSize(1, 1)));
 
-            // 4. Status Bar
-            Label statusLabel = new Label("● Ready. Press [↑/↓] to select a plugin.");
+            Label statusLabel = new Label("Ready.");
             statusLabel.setForegroundColor(TokyoNightTheme.FG);
-            Border statusBorder = statusLabel.withBorder(Borders.singleLine("Selection & Status"));
+            Border statusBorder = statusLabel.withBorder(Borders.singleLine("Status"));
             mainPanel.addComponent(statusBorder);
 
             mainPanel.addComponent(new EmptySpace(new TerminalSize(1, 1)));
 
-            // 5. Action Definitions
             Runnable promoteAction = () -> {
                 String id = getSelectedPluginId(table);
                 if (id == null) {
-                    setStatus(statusLabel, "⚠ No plugin selected! Select a row first.", TokyoNightTheme.WARNING);
+                    setStatus(statusLabel, "No plugin selected.", TokyoNightTheme.WARNING);
                     return;
                 }
                 boolean ok = executeApiCall("PUT", "/api/v1/admin/plugins/" + id + "/channel?channel=STABLE", null, statusLabel);
                 if (ok) {
                     refreshTableData(statusLabel, table);
-                    setStatus(statusLabel, "✓ Plugin '" + id + "' successfully promoted to STABLE channel.", TokyoNightTheme.SUCCESS);
+                    setStatus(statusLabel, "Plugin '" + id + "' promoted to STABLE.", TokyoNightTheme.SUCCESS);
                 }
             };
 
             Runnable demoteAction = () -> {
                 String id = getSelectedPluginId(table);
                 if (id == null) {
-                    setStatus(statusLabel, "⚠ No plugin selected! Select a row first.", TokyoNightTheme.WARNING);
+                    setStatus(statusLabel, "No plugin selected.", TokyoNightTheme.WARNING);
                     return;
                 }
                 boolean ok = executeApiCall("PUT", "/api/v1/admin/plugins/" + id + "/channel?channel=NIGHTLY", null, statusLabel);
                 if (ok) {
                     refreshTableData(statusLabel, table);
-                    setStatus(statusLabel, "✓ Plugin '" + id + "' demoted to NIGHTLY channel.", TokyoNightTheme.WARNING);
+                    setStatus(statusLabel, "Plugin '" + id + "' demoted to NIGHTLY.", TokyoNightTheme.WARNING);
                 }
             };
 
             Runnable toggleActiveAction = () -> {
                 String id = getSelectedPluginId(table);
                 if (id == null) {
-                    setStatus(statusLabel, "⚠ No plugin selected! Select a row first.", TokyoNightTheme.WARNING);
+                    setStatus(statusLabel, "No plugin selected.", TokyoNightTheme.WARNING);
                     return;
                 }
                 boolean ok = executeApiCall("PUT", "/api/v1/admin/plugins/" + id + "/toggle-active", null, statusLabel);
                 if (ok) {
                     refreshTableData(statusLabel, table);
-                    setStatus(statusLabel, "✓ Plugin '" + id + "' active status toggled.", TokyoNightTheme.ACCENT);
+                    setStatus(statusLabel, "Plugin '" + id + "' toggled.", TokyoNightTheme.ACCENT);
                 }
             };
 
             Runnable viewCodeAction = () -> {
                 String id = getSelectedPluginId(table);
                 if (id == null) {
-                    setStatus(statusLabel, "⚠ No plugin selected! Select a row first.", TokyoNightTheme.WARNING);
+                    setStatus(statusLabel, "No plugin selected.", TokyoNightTheme.WARNING);
                     return;
                 }
                 viewPluginCode(id, textGUI, statusLabel);
             };
 
             Runnable gitSyncAction = () -> {
-                setStatus(statusLabel, "⟳ Triggering remote Git repository synchronization...", TokyoNightTheme.CYAN);
+                setStatus(statusLabel, "Syncing Git repository...", TokyoNightTheme.CYAN);
                 boolean ok = executeApiCall("POST", "/api/v1/admin/git/sync", null, statusLabel);
                 if (ok) {
                     refreshTableData(statusLabel, table);
-                    setStatus(statusLabel, "✓ Remote Git repository pulled and database re-synchronized!", TokyoNightTheme.SUCCESS);
+                    setStatus(statusLabel, "Git repository synced.", TokyoNightTheme.SUCCESS);
                 }
             };
 
@@ -171,34 +162,30 @@ public class StandaloneTui {
                 refreshTableData(statusLabel, table);
             };
 
-            // Enter on table opens source code viewer
             table.setSelectAction(viewCodeAction);
 
-            // 6. Interactive Button Row
             Panel buttonPanel = new Panel(new LinearLayout(Direction.HORIZONTAL));
             buttonPanel.addComponent(new Button("[S] Promote", promoteAction));
             buttonPanel.addComponent(new Button("[N] Demote", demoteAction));
-            buttonPanel.addComponent(new Button("[D] Toggle Active", toggleActiveAction));
-            buttonPanel.addComponent(new Button("[V] View Code", viewCodeAction));
-            buttonPanel.addComponent(new Button("[P] Git Sync", gitSyncAction));
+            buttonPanel.addComponent(new Button("[D] Toggle", toggleActiveAction));
+            buttonPanel.addComponent(new Button("[V] Code", viewCodeAction));
+            buttonPanel.addComponent(new Button("[P] Sync", gitSyncAction));
             buttonPanel.addComponent(new Button("[R] Refresh", refreshAction));
             buttonPanel.addComponent(new Button("[Q] Quit", window::close));
             mainPanel.addComponent(buttonPanel);
 
             window.setComponent(mainPanel);
 
-            // 7. Global Keyboard Navigation Map
             Map<Character, Runnable> hotkeys = new HashMap<>();
             hotkeys.put('S', promoteAction);
             hotkeys.put('N', demoteAction);
             hotkeys.put('D', toggleActiveAction);
-            hotkeys.put(' ', toggleActiveAction); // Space toggles active
+            hotkeys.put(' ', toggleActiveAction);
             hotkeys.put('V', viewCodeAction);
             hotkeys.put('P', gitSyncAction);
             hotkeys.put('R', refreshAction);
             hotkeys.put('Q', window::close);
 
-            // Vim navigation keys (J = down, K = up)
             hotkeys.put('J', () -> {
                 table.takeFocus();
                 int cur = table.getSelectedRow();
@@ -220,7 +207,6 @@ public class StandaloneTui {
             window.addWindowListener(new WindowListenerAdapter() {
                 @Override
                 public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean deliver) {
-                    // CTRL+C clean termination
                     if (keyStroke.isCtrlDown() && (keyStroke.getCharacter() == 'c' || keyStroke.getCharacter() == 'C')) {
                         deliver.set(false);
                         window.close();
@@ -228,8 +214,6 @@ public class StandaloneTui {
                     }
 
                     KeyType type = keyStroke.getKeyType();
-
-                    // ESCAPE: Close window / Exit
                     if (type == KeyType.Escape) {
                         deliver.set(false);
                         window.close();
@@ -239,14 +223,12 @@ public class StandaloneTui {
                     Interactable focused = basePane.getFocusedInteractable();
                     boolean isEditableText = (focused instanceof TextBox) && !((TextBox) focused).isReadOnly();
 
-                    // Arrow key navigation: always ensure table is focused so user is never stuck
                     if (type == KeyType.ArrowDown || type == KeyType.ArrowUp) {
                         if (focused != table) {
                             table.takeFocus();
                         }
                     }
 
-                    // Single-key global hotkeys
                     if (!isEditableText) {
                         Character c = null;
                         if (type == KeyType.Character && keyStroke.getCharacter() != null) {
@@ -262,7 +244,6 @@ public class StandaloneTui {
 
                 @Override
                 public void onUnhandledInput(Window basePane, KeyStroke keyStroke, AtomicBoolean hasBeenHandled) {
-                    // Update status bar when arrow navigation occurs
                     KeyType type = keyStroke.getKeyType();
                     if (type == KeyType.ArrowDown || type == KeyType.ArrowUp) {
                         updateSelectedRowStatus(table, statusLabel);
@@ -270,7 +251,6 @@ public class StandaloneTui {
                 }
             });
 
-            // Initial data fetch and table focus
             refreshTableData(statusLabel, table);
             table.takeFocus();
 
@@ -298,7 +278,7 @@ public class StandaloneTui {
             String name = table.getTableModel().getCell(1, row);
             String channel = table.getTableModel().getCell(2, row);
             String status = table.getTableModel().getCell(7, row);
-            setStatus(statusLabel, "▶ [" + (row + 1) + "/" + total + "] " + id + " (" + name + ") • " + channel + " • " + status, TokyoNightTheme.CYAN);
+            setStatus(statusLabel, "[" + (row + 1) + "/" + total + "] " + id + " (" + name + ") | " + channel + " | " + status, TokyoNightTheme.CYAN);
         }
     }
 
@@ -315,7 +295,7 @@ public class StandaloneTui {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                setStatus(statusLabel, "✗ Server error HTTP " + response.statusCode() + ": " + response.body(), TokyoNightTheme.ERROR);
+                setStatus(statusLabel, "Server error HTTP " + response.statusCode() + ": " + response.body(), TokyoNightTheme.ERROR);
                 return;
             }
 
@@ -353,7 +333,7 @@ public class StandaloneTui {
             updateSelectedRowStatus(table, statusLabel);
 
         } catch (Exception e) {
-            setStatus(statusLabel, "✗ Connection Error: " + e.getMessage(), TokyoNightTheme.ERROR);
+            setStatus(statusLabel, "Connection Error: " + e.getMessage(), TokyoNightTheme.ERROR);
         }
     }
 
@@ -381,11 +361,11 @@ public class StandaloneTui {
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 return true;
             } else {
-                setStatus(statusLabel, "✗ API Error (" + response.statusCode() + "): " + response.body(), TokyoNightTheme.ERROR);
+                setStatus(statusLabel, "API Error (" + response.statusCode() + "): " + response.body(), TokyoNightTheme.ERROR);
                 return false;
             }
         } catch (Exception e) {
-            setStatus(statusLabel, "✗ Network Error: " + e.getMessage(), TokyoNightTheme.ERROR);
+            setStatus(statusLabel, "Network Error: " + e.getMessage(), TokyoNightTheme.ERROR);
             return false;
         }
     }
@@ -399,22 +379,21 @@ public class StandaloneTui {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                setStatus(statusLabel, "✗ Could not fetch code: " + response.body(), TokyoNightTheme.ERROR);
+                setStatus(statusLabel, "Could not fetch code: " + response.body(), TokyoNightTheme.ERROR);
                 return;
             }
 
-            BasicWindow codeWindow = new BasicWindow("Source Code: " + pluginId + ".js  [Press ESC or Q to Close]");
+            BasicWindow codeWindow = new BasicWindow("Plugin Code: " + pluginId + ".js");
             codeWindow.setHints(List.of(Window.Hint.CENTERED));
 
             Panel panel = new Panel(new LinearLayout(Direction.VERTICAL));
             TextBox codeBox = new TextBox(new TerminalSize(88, 20), response.body(), TextBox.Style.MULTI_LINE);
             codeBox.setReadOnly(true);
-            panel.addComponent(codeBox.withBorder(Borders.singleLine("JavaScript Source Code")));
+            panel.addComponent(codeBox.withBorder(Borders.singleLine("Source")));
 
-            panel.addComponent(new Button("[ESC / Q] Close Viewer", codeWindow::close));
+            panel.addComponent(new Button("[Q / ESC] Close", codeWindow::close));
             codeWindow.setComponent(panel);
 
-            // Fast close hotkeys for code modal
             codeWindow.addWindowListener(new WindowListenerAdapter() {
                 @Override
                 public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean deliver) {
@@ -432,7 +411,7 @@ public class StandaloneTui {
             codeBox.takeFocus();
 
         } catch (Exception e) {
-            setStatus(statusLabel, "✗ Failed to fetch plugin code: " + e.getMessage(), TokyoNightTheme.ERROR);
+            setStatus(statusLabel, "Failed to fetch plugin code: " + e.getMessage(), TokyoNightTheme.ERROR);
         }
     }
 
