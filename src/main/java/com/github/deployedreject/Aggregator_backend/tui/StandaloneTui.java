@@ -5,8 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.gui2.*;
-import com.googlecode.lanterna.gui2.dialogs.MessageDialog;
-import com.googlecode.lanterna.gui2.dialogs.MessageDialogButton;
 import com.googlecode.lanterna.gui2.table.Table;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
@@ -26,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tokyo Night themed Standalone Terminal UI for Aggregator Plugin Registry moderation.
- * Features instant single-key hotkey navigation inspired by murces and LazyVim.
+ * Features instant single-key and vim-key navigation, visual row tracking, and localhost-only security.
  */
 public class StandaloneTui {
 
@@ -86,7 +84,7 @@ public class StandaloneTui {
             mainPanel.addComponent(title);
 
             // 2. Hotkey Helper Bar
-            Label hotkeyBar = new Label("Hotkeys: [S] Promote | [N] Demote | [D] Toggle Active | [V] View Code | [P] Git Sync | [R] Refresh | [Q] Quit");
+            Label hotkeyBar = new Label("Keys: [↑/↓] or [J/K] Navigate | [Enter] View Code | [Space/D] Toggle Active | [S] Promote | [N] Demote | [P] Sync | [R] Refresh | [Q] Quit");
             hotkeyBar.setForegroundColor(TokyoNightTheme.ACCENT);
             mainPanel.addComponent(hotkeyBar);
 
@@ -94,18 +92,19 @@ public class StandaloneTui {
 
             // 3. Plugin Table
             Table<String> table = new Table<>("ID", "Name", "Channel", "Version", "Likes", "Dislikes", "Dislike%", "Status");
+            table.setCellSelection(false);
             table.setEscapeByArrowKey(false);
-            table.setPreferredSize(new TerminalSize(98, 13));
+            table.setPreferredSize(new TerminalSize(100, 13));
 
-            Border tableBorder = table.withBorder(Borders.singleLine("Registry Plugins [↑/↓ Navigate • Single-Key Hotkeys Enabled]"));
+            Border tableBorder = table.withBorder(Borders.singleLine("Registry Plugins [↑/↓ or J/K to Navigate • Enter to View]"));
             mainPanel.addComponent(tableBorder);
 
             mainPanel.addComponent(new EmptySpace(new TerminalSize(1, 1)));
 
             // 4. Status Bar
-            Label statusLabel = new Label("● Ready. Press [↑/↓] to select a plugin, or press [S/N/D/V/P/R/Q] anytime.");
+            Label statusLabel = new Label("● Ready. Press [↑/↓] to select a plugin.");
             statusLabel.setForegroundColor(TokyoNightTheme.FG);
-            Border statusBorder = statusLabel.withBorder(Borders.singleLine("Status"));
+            Border statusBorder = statusLabel.withBorder(Borders.singleLine("Selection & Status"));
             mainPanel.addComponent(statusBorder);
 
             mainPanel.addComponent(new EmptySpace(new TerminalSize(1, 1)));
@@ -172,6 +171,9 @@ public class StandaloneTui {
                 refreshTableData(statusLabel, table);
             };
 
+            // Enter on table opens source code viewer
+            table.setSelectAction(viewCodeAction);
+
             // 6. Interactive Button Row
             Panel buttonPanel = new Panel(new LinearLayout(Direction.HORIZONTAL));
             buttonPanel.addComponent(new Button("[S] Promote", promoteAction));
@@ -185,15 +187,35 @@ public class StandaloneTui {
 
             window.setComponent(mainPanel);
 
-            // 7. Global Keyboard Navigation Helper (Direct interception on Window)
+            // 7. Global Keyboard Navigation Map
             Map<Character, Runnable> hotkeys = new HashMap<>();
             hotkeys.put('S', promoteAction);
             hotkeys.put('N', demoteAction);
             hotkeys.put('D', toggleActiveAction);
+            hotkeys.put(' ', toggleActiveAction); // Space toggles active
             hotkeys.put('V', viewCodeAction);
             hotkeys.put('P', gitSyncAction);
             hotkeys.put('R', refreshAction);
             hotkeys.put('Q', window::close);
+
+            // Vim navigation keys (J = down, K = up)
+            hotkeys.put('J', () -> {
+                table.takeFocus();
+                int cur = table.getSelectedRow();
+                int total = table.getTableModel().getRowCount();
+                if (cur < total - 1) {
+                    table.setSelectedRow(cur + 1);
+                    updateSelectedRowStatus(table, statusLabel);
+                }
+            });
+            hotkeys.put('K', () -> {
+                table.takeFocus();
+                int cur = table.getSelectedRow();
+                if (cur > 0) {
+                    table.setSelectedRow(cur - 1);
+                    updateSelectedRowStatus(table, statusLabel);
+                }
+            });
 
             window.addWindowListener(new WindowListenerAdapter() {
                 @Override
@@ -217,12 +239,10 @@ public class StandaloneTui {
                     Interactable focused = basePane.getFocusedInteractable();
                     boolean isEditableText = (focused instanceof TextBox) && !((TextBox) focused).isReadOnly();
 
-                    // Keep arrow navigation strictly inside table
-                    if (type == KeyType.ArrowDown || type == KeyType.ArrowUp ||
-                        type == KeyType.ArrowLeft || type == KeyType.ArrowRight) {
-                        if (!(focused instanceof Table) && !(focused instanceof TextBox)) {
-                            deliver.set(false);
-                            return;
+                    // Arrow key navigation: always ensure table is focused so user is never stuck
+                    if (type == KeyType.ArrowDown || type == KeyType.ArrowUp) {
+                        if (focused != table) {
+                            table.takeFocus();
                         }
                     }
 
@@ -237,6 +257,15 @@ public class StandaloneTui {
                             hotkeys.get(c).run();
                             return;
                         }
+                    }
+                }
+
+                @Override
+                public void onUnhandledInput(Window basePane, KeyStroke keyStroke, AtomicBoolean hasBeenHandled) {
+                    // Update status bar when arrow navigation occurs
+                    KeyType type = keyStroke.getKeyType();
+                    if (type == KeyType.ArrowDown || type == KeyType.ArrowUp) {
+                        updateSelectedRowStatus(table, statusLabel);
                     }
                 }
             });
@@ -256,8 +285,20 @@ public class StandaloneTui {
 
     private void setStatus(Label statusLabel, String msg, TextColor color) {
         if (statusLabel != null) {
-            statusLabel.setText(msg);
+            statusLabel.setText("  " + msg + "  ");
             statusLabel.setForegroundColor(color != null ? color : TokyoNightTheme.FG);
+        }
+    }
+
+    private void updateSelectedRowStatus(Table<String> table, Label statusLabel) {
+        int row = table.getSelectedRow();
+        int total = table.getTableModel().getRowCount();
+        if (row >= 0 && row < total) {
+            String id = table.getTableModel().getCell(0, row);
+            String name = table.getTableModel().getCell(1, row);
+            String channel = table.getTableModel().getCell(2, row);
+            String status = table.getTableModel().getCell(7, row);
+            setStatus(statusLabel, "▶ [" + (row + 1) + "/" + total + "] " + id + " (" + name + ") • " + channel + " • " + status, TokyoNightTheme.CYAN);
         }
     }
 
@@ -309,7 +350,7 @@ public class StandaloneTui {
                 table.setSelectedRow(rowToSelect);
             }
             table.takeFocus();
-            setStatus(statusLabel, "● Ready. " + count + " plugin" + (count == 1 ? "" : "s") + " loaded • Connected to " + baseUrl, TokyoNightTheme.SUCCESS);
+            updateSelectedRowStatus(table, statusLabel);
 
         } catch (Exception e) {
             setStatus(statusLabel, "✗ Connection Error: " + e.getMessage(), TokyoNightTheme.ERROR);

@@ -51,9 +51,10 @@ public class TokyoNightTheme {
                 .setActive(BG, ACCENT, SGR.BOLD)
                 .setPreLight(FG, SELECTION);
 
-        // Table: FG on BG; selected row: crisp white on SELECTION blue
+        // Table: FG on BG; selected row: crisp white on SELECTION blue (both focused and unfocused)
         theme.addOverride(Table.class, FG, BG)
                 .setSelected(new TextColor.RGB(255, 255, 255), SELECTION, SGR.BOLD)
+                .setActive(new TextColor.RGB(255, 255, 255), SELECTION, SGR.BOLD)
                 .setPreLight(FG, SELECTION);
 
         // TextBox (Code Viewer / Inputs)
