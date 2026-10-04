@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface PluginRatingRepository extends JpaRepository<PluginRating, Long> {
 
     Optional<PluginRating> findByPluginIdAndVoterHash(String pluginId, String voterHash);
+
+    void deleteByPluginId(String pluginId);
 }

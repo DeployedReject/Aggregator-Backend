@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aggregator-registry",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aggregator-plugins-db",
+      "database_id": "3930ed97-b6ab-4daf-85e8-a4e0170b0f54"
+    }
+  ],
+  "vars": {
+    "ORIGIN_URL": "http://localhost:8080"
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
+}

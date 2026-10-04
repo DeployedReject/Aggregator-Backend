@@ -78,7 +78,7 @@ public class StandaloneTui {
             title.setForegroundColor(TokyoNightTheme.CYAN);
             mainPanel.addComponent(title);
 
-            Label hotkeyBar = new Label("[S] Promote  [N] Demote  [Space/D] Toggle  [Enter/V] Code  [P] Sync  [R] Refresh  [Q] Quit");
+            Label hotkeyBar = new Label("[S] Promote  [N] Demote  [Space/T] Toggle  [Enter/V] Code  [X/Del] Delete  [P] Sync  [R] Refresh  [Q] Quit");
             hotkeyBar.setForegroundColor(TokyoNightTheme.ACCENT);
             mainPanel.addComponent(hotkeyBar);
 
@@ -149,6 +149,57 @@ public class StandaloneTui {
                 viewPluginCode(id, textGUI, statusLabel);
             };
 
+            Runnable deleteAction = () -> {
+                String id = getSelectedPluginId(table);
+                if (id == null) {
+                    setStatus(statusLabel, "No plugin selected.", TokyoNightTheme.WARNING);
+                    return;
+                }
+
+                BasicWindow confirmWindow = new BasicWindow("Confirm Deletion");
+                confirmWindow.setHints(List.of(Window.Hint.CENTERED));
+
+                Panel confirmPanel = new Panel(new LinearLayout(Direction.VERTICAL));
+                confirmPanel.addComponent(new Label("Permanently delete plugin '" + id + "'?"));
+                confirmPanel.addComponent(new Label("This will remove it from the DB and push removal to GitHub."));
+                confirmPanel.addComponent(new EmptySpace(new TerminalSize(1, 1)));
+
+                Panel confirmButtons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+                Button deleteBtn = new Button("Delete", () -> {
+                    confirmWindow.close();
+                    setStatus(statusLabel, "Deleting plugin '" + id + "' and syncing Git...", TokyoNightTheme.WARNING);
+                    boolean ok = executeApiCall("DELETE", "/api/v1/admin/plugins/" + id, null, statusLabel);
+                    if (ok) {
+                        refreshTableData(statusLabel, table);
+                        setStatus(statusLabel, "Plugin '" + id + "' deleted and synced to GitHub.", TokyoNightTheme.SUCCESS);
+                    }
+                });
+
+                Button cancelBtn = new Button("Cancel", confirmWindow::close);
+
+                confirmButtons.addComponent(deleteBtn);
+                confirmButtons.addComponent(cancelBtn);
+                confirmPanel.addComponent(confirmButtons);
+
+                confirmWindow.setComponent(confirmPanel);
+
+                confirmWindow.addWindowListener(new WindowListenerAdapter() {
+                    @Override
+                    public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean deliver) {
+                        if (keyStroke.getKeyType() == KeyType.Escape ||
+                            (keyStroke.getKeyType() == KeyType.Character &&
+                             (keyStroke.getCharacter() == 'q' || keyStroke.getCharacter() == 'Q' ||
+                              keyStroke.getCharacter() == 'c' || keyStroke.getCharacter() == 'C'))) {
+                            deliver.set(false);
+                            confirmWindow.close();
+                        }
+                    }
+                });
+
+                textGUI.addWindow(confirmWindow);
+                cancelBtn.takeFocus();
+            };
+
             Runnable gitSyncAction = () -> {
                 setStatus(statusLabel, "Syncing Git repository...", TokyoNightTheme.CYAN);
                 boolean ok = executeApiCall("POST", "/api/v1/admin/git/sync", null, statusLabel);
@@ -167,8 +218,9 @@ public class StandaloneTui {
             Panel buttonPanel = new Panel(new LinearLayout(Direction.HORIZONTAL));
             buttonPanel.addComponent(new Button("[S] Promote", promoteAction));
             buttonPanel.addComponent(new Button("[N] Demote", demoteAction));
-            buttonPanel.addComponent(new Button("[D] Toggle", toggleActiveAction));
+            buttonPanel.addComponent(new Button("[T] Toggle", toggleActiveAction));
             buttonPanel.addComponent(new Button("[V] Code", viewCodeAction));
+            buttonPanel.addComponent(new Button("[X] Delete", deleteAction));
             buttonPanel.addComponent(new Button("[P] Sync", gitSyncAction));
             buttonPanel.addComponent(new Button("[R] Refresh", refreshAction));
             buttonPanel.addComponent(new Button("[Q] Quit", window::close));
@@ -179,9 +231,11 @@ public class StandaloneTui {
             Map<Character, Runnable> hotkeys = new HashMap<>();
             hotkeys.put('S', promoteAction);
             hotkeys.put('N', demoteAction);
+            hotkeys.put('T', toggleActiveAction);
             hotkeys.put('D', toggleActiveAction);
             hotkeys.put(' ', toggleActiveAction);
             hotkeys.put('V', viewCodeAction);
+            hotkeys.put('X', deleteAction);
             hotkeys.put('P', gitSyncAction);
             hotkeys.put('R', refreshAction);
             hotkeys.put('Q', window::close);
@@ -217,6 +271,11 @@ public class StandaloneTui {
                     if (type == KeyType.Escape) {
                         deliver.set(false);
                         window.close();
+                        return;
+                    }
+                    if (type == KeyType.Delete) {
+                        deliver.set(false);
+                        deleteAction.run();
                         return;
                     }
 
@@ -355,6 +414,8 @@ public class StandaloneTui {
                 builder.PUT(HttpRequest.BodyPublishers.noBody());
             } else if ("POST".equalsIgnoreCase(method)) {
                 builder.POST(jsonBody != null ? HttpRequest.BodyPublishers.ofString(jsonBody) : HttpRequest.BodyPublishers.noBody());
+            } else if ("DELETE".equalsIgnoreCase(method)) {
+                builder.DELETE();
             }
 
             HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());

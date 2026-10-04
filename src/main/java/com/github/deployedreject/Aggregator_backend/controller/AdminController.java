@@ -74,6 +74,18 @@ public class AdminController {
         return ResponseEntity.ok(PluginResponse.fromEntity(updated));
     }
 
+    @DeleteMapping("/plugins/{id}")
+    public ResponseEntity<Void> deletePlugin(
+        @PathVariable String id,
+        @RequestHeader(value = "X-Admin-Token", required = false) String adminToken,
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        validateAdminToken(adminToken, authHeader);
+        pluginService.deletePlugin(id);
+        log.info("Admin deleted plugin '{}'", id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/git/sync")
     public ResponseEntity<String> triggerGitSync(
         @RequestHeader(value = "X-Admin-Token", required = false) String adminToken,

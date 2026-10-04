@@ -17,6 +17,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.FileSystemUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,6 +46,12 @@ public class GitSyncService {
 
     @EventListener(ApplicationReadyEvent.class)
     public synchronized void initializeGitRepo() {
+        try {
+            org.eclipse.jgit.transport.SshSessionFactory.setInstance(new org.eclipse.jgit.transport.sshd.SshdSessionFactory());
+        } catch (Throwable t) {
+            log.warn("Could not register SshdSessionFactory: {}", t.getMessage());
+        }
+
         String repoPathStr = appProperties.getGit().getRepoPath();
         File repoDir = new File(repoPathStr);
         String remoteUrl = appProperties.getGit().getRemoteUrl();
@@ -83,11 +90,12 @@ public class GitSyncService {
 
             if (this.git != null && remoteUrl != null && !remoteUrl.isBlank()) {
                 org.eclipse.jgit.lib.StoredConfig config = this.git.getRepository().getConfig();
-                if (config.getString("remote", "origin", "url") == null) {
+                String currentOrigin = config.getString("remote", "origin", "url");
+                if (currentOrigin == null || !currentOrigin.equals(remoteUrl)) {
                     config.setString("remote", "origin", "url", remoteUrl);
                     config.setString("remote", "origin", "fetch", "+refs/heads/*:refs/remotes/origin/*");
                     config.save();
-                    log.info("Configured remote origin URL to '{}'", remoteUrl);
+                    log.info("Configured remote origin URL to '{}' (was '{}')", remoteUrl, currentOrigin);
                 }
             }
 
@@ -239,6 +247,43 @@ public class GitSyncService {
             log.info("Git commit created for plugin '{}'", plugin.getId());
 
             pushToRemoteAsync();
+        }
+    }
+
+    public synchronized void deletePluginAndCommit(String pluginId) throws IOException, GitAPIException {
+        File repoDir = new File(appProperties.getGit().getRepoPath());
+        File pluginFolder = new File(repoDir, "plugins/" + pluginId);
+
+        if (git != null) {
+            String pattern = "plugins/" + pluginId;
+            try {
+                git.rm().addFilepattern(pattern).call();
+            } catch (Exception e) {
+                log.warn("JGit rm note for '{}': {}", pattern, e.getMessage());
+            }
+        }
+
+        if (pluginFolder.exists()) {
+            FileSystemUtils.deleteRecursively(pluginFolder);
+            log.info("Deleted plugin directory: {}", pluginFolder.getAbsolutePath());
+        }
+
+        if (git != null) {
+            try {
+                git.add().addFilepattern("plugins").setUpdate(true).call();
+                var status = git.status().call();
+                if (!status.isClean()) {
+                    git.commit()
+                        .setAuthor("Aggregator Registry", "registry@aggregator.local")
+                        .setCommitter("Aggregator Registry", "registry@aggregator.local")
+                        .setMessage("chore(plugin): delete " + pluginId)
+                        .call();
+                    log.info("Git commit created for deletion of plugin '{}'", pluginId);
+                    pushToRemoteAsync();
+                }
+            } catch (Exception e) {
+                log.error("Failed to stage/commit deletion for plugin '{}': {}", pluginId, e.getMessage(), e);
+            }
         }
     }
 

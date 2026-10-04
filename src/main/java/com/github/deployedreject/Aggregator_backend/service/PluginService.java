@@ -4,6 +4,8 @@ import com.github.deployedreject.Aggregator_backend.dto.PluginResponse;
 import com.github.deployedreject.Aggregator_backend.dto.PluginSubmitRequest;
 import com.github.deployedreject.Aggregator_backend.entity.Plugin;
 import com.github.deployedreject.Aggregator_backend.entity.PluginChannel;
+import com.github.deployedreject.Aggregator_backend.repository.ModerationAlertRepository;
+import com.github.deployedreject.Aggregator_backend.repository.PluginRatingRepository;
 import com.github.deployedreject.Aggregator_backend.repository.PluginRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +24,17 @@ public class PluginService {
     private static final Logger log = LoggerFactory.getLogger(PluginService.class);
 
     private final PluginRepository pluginRepository;
+    private final PluginRatingRepository pluginRatingRepository;
+    private final ModerationAlertRepository moderationAlertRepository;
     private final GitSyncService gitSyncService;
 
-    public PluginService(PluginRepository pluginRepository, GitSyncService gitSyncService) {
+    public PluginService(PluginRepository pluginRepository,
+                         PluginRatingRepository pluginRatingRepository,
+                         ModerationAlertRepository moderationAlertRepository,
+                         GitSyncService gitSyncService) {
         this.pluginRepository = pluginRepository;
+        this.pluginRatingRepository = pluginRatingRepository;
+        this.moderationAlertRepository = moderationAlertRepository;
         this.gitSyncService = gitSyncService;
     }
 
@@ -101,5 +110,22 @@ public class PluginService {
         Plugin plugin = getPlugin(id);
         plugin.setActive(!plugin.isActive());
         return pluginRepository.save(plugin);
+    }
+
+    @Transactional
+    public void deletePlugin(String id) {
+        Plugin plugin = getPlugin(id);
+
+        try {
+            gitSyncService.deletePluginAndCommit(id);
+        } catch (Exception e) {
+            log.error("Failed to delete plugin from Git for '{}': {}", id, e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete plugin from Git repository: " + e.getMessage());
+        }
+
+        pluginRatingRepository.deleteByPluginId(id);
+        moderationAlertRepository.deleteByPluginId(id);
+        pluginRepository.delete(plugin);
+        log.info("Plugin '{}' successfully deleted from database and Git", id);
     }
 }

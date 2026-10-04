@@ -34,4 +34,5 @@ build/
 
 # Local data & cloned plugins repo
 data/
-
+.wrangler/
+node_modules/

@@ -14,4 +14,6 @@ public interface ModerationAlertRepository extends JpaRepository<ModerationAlert
     List<ModerationAlert> findByPluginIdOrderByAlertedAtDesc(String pluginId);
 
     List<ModerationAlert> findByResolvedFalseOrderByAlertedAtDesc();
+
+    void deleteByPluginId(String pluginId);
 }

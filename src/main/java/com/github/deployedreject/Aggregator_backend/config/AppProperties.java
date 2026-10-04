@@ -98,11 +98,15 @@ public class AppProperties {
     public static class Security {
         private String llmApiToken = "dev-llm-token-12345";
         private String adminToken = "aggregator-admin-token";
+        private String originSecret = "aggregator-origin-secret-9f8a2c1b4e";
 
         public String getLlmApiToken() { return llmApiToken; }
         public void setLlmApiToken(String llmApiToken) { this.llmApiToken = llmApiToken; }
 
         public String getAdminToken() { return adminToken; }
         public void setAdminToken(String adminToken) { this.adminToken = adminToken; }
+
+        public String getOriginSecret() { return originSecret; }
+        public void setOriginSecret(String originSecret) { this.originSecret = originSecret; }
     }
 }

@@ -47,7 +47,7 @@ spring:
 app:
   git:
     repo-path: ${APP_GIT_REPO_PATH:./data/plugins-repo}
-    remote-url: ${APP_GIT_REMOTE_URL:https://github.com/DeployedReject/Aggregator-Plugins.git}
+    remote-url: ${APP_GIT_REMOTE_URL:git@github.com:DeployedReject/Aggregator-Plugins.git}
     branch: ${APP_GIT_BRANCH:main}
     auth:
       username: ${APP_GIT_AUTH_USERNAME:}
@@ -68,3 +68,4 @@ app:
   security:
     llm-api-token: ${APP_SECURITY_LLM_API_TOKEN:dev-llm-token-12345}
     admin-token: ${APP_SECURITY_ADMIN_TOKEN:aggregator-admin-token}
+    origin-secret: ${APP_SECURITY_ORIGIN_SECRET:dev-origin-secret}
