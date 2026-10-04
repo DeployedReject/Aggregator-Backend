@@ -97,6 +97,38 @@ public class AdminController {
         return ResponseEntity.ok("Git repository synchronized successfully");
     }
 
+    @GetMapping(value = "/adblock/rules", produces = "text/plain")
+    public ResponseEntity<String> getRawAdblockRules(
+        @RequestHeader(value = "X-Admin-Token", required = false) String adminToken,
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        validateAdminToken(adminToken, authHeader);
+        try {
+            String content = gitSyncService.readRawAdblockRulesFile();
+            return ResponseEntity.ok(content);
+        } catch (Exception e) {
+            log.error("Failed to read raw adblock rules: {}", e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read adblock rules");
+        }
+    }
+
+    @PutMapping(value = "/adblock/rules", consumes = "text/plain")
+    public ResponseEntity<String> updateAdblockRules(
+        @RequestBody String rawRules,
+        @RequestHeader(value = "X-Admin-Token", required = false) String adminToken,
+        @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
+    ) {
+        validateAdminToken(adminToken, authHeader);
+        try {
+            gitSyncService.saveAdblockRulesAndCommit(rawRules, "chore(ads): update adblock rules via admin");
+            log.info("Admin updated adblock rules and pushed to Git");
+            return ResponseEntity.ok("Adblock rules updated and pushed to Git successfully");
+        } catch (Exception e) {
+            log.error("Failed to update adblock rules: {}", e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update adblock rules: " + e.getMessage());
+        }
+    }
+
     private void validateAdminToken(String adminToken, String authHeader) {
         String configuredToken = appProperties.getSecurity().getAdminToken();
         if (configuredToken == null || configuredToken.isBlank()) {

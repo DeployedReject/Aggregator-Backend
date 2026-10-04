@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -145,6 +147,19 @@ public class GitSyncService {
     public synchronized void syncFromDiskToDatabase() {
         File repoDir = new File(appProperties.getGit().getRepoPath());
         File pluginsDir = new File(repoDir, "plugins");
+
+        File adsDir = new File(repoDir, "ads");
+        if (!adsDir.exists()) {
+            adsDir.mkdirs();
+        }
+        File defaultBlocklist = new File(adsDir, "blocklist.txt");
+        if (!defaultBlocklist.exists()) {
+            try {
+                Files.writeString(defaultBlocklist.toPath(), "! Aggregator Adblock Rule List\n! Format: Adblock filter syntax (e.g. ||example.com^)\n\n");
+            } catch (IOException e) {
+                log.warn("Could not initialize default blocklist.txt: {}", e.getMessage());
+            }
+        }
 
         if (!pluginsDir.exists() || !pluginsDir.isDirectory()) {
             log.info("No 'plugins' directory found in Git repo at '{}'. Creating it.", pluginsDir.getAbsolutePath());
@@ -293,6 +308,51 @@ public class GitSyncService {
             throw new IOException("Plugin code file not found on disk: " + path);
         }
         return Files.readString(path);
+    }
+
+    public synchronized List<String> readAdblockRules() throws IOException {
+        Path path = Paths.get(appProperties.getGit().getRepoPath(), "ads", "blocklist.txt");
+        if (!Files.exists(path)) {
+            return List.of();
+        }
+        List<String> lines = Files.readAllLines(path);
+        List<String> rules = new ArrayList<>();
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("!") && !trimmed.startsWith("#")) {
+                rules.add(trimmed);
+            }
+        }
+        return rules;
+    }
+
+    public synchronized String readRawAdblockRulesFile() throws IOException {
+        Path path = Paths.get(appProperties.getGit().getRepoPath(), "ads", "blocklist.txt");
+        if (!Files.exists(path)) {
+            return "";
+        }
+        return Files.readString(path);
+    }
+
+    public synchronized void saveAdblockRulesAndCommit(String rawContent, String commitMessage) throws IOException, GitAPIException {
+        File repoDir = new File(appProperties.getGit().getRepoPath());
+        File adsDir = new File(repoDir, "ads");
+        if (!adsDir.exists()) {
+            adsDir.mkdirs();
+        }
+        File blocklistFile = new File(adsDir, "blocklist.txt");
+        Files.writeString(blocklistFile.toPath(), rawContent);
+
+        if (git != null) {
+            git.add().addFilepattern("ads/blocklist.txt").call();
+            git.commit()
+                .setAuthor("Aggregator Registry", "registry@aggregator.local")
+                .setCommitter("Aggregator Registry", "registry@aggregator.local")
+                .setMessage(commitMessage != null && !commitMessage.isBlank() ? commitMessage : "chore(ads): update adblock rules")
+                .call();
+            log.info("Git commit created for adblock rules update");
+            pushToRemoteAsync();
+        }
     }
 
     @Async

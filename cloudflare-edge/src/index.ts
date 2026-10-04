@@ -268,6 +268,41 @@ export default {
       return response;
     }
 
+    // GET /api/v1/adblock/rules - Edge-cached adblock filter rules
+    if (path === "/api/v1/adblock/rules" && request.method === "GET") {
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString(), request);
+      let response = await cache.match(cacheKey);
+
+      if (!response) {
+        const originUrl = `${env.ORIGIN_URL}${path}`;
+        const originRes = await fetch(originUrl, {
+          headers: { "X-Origin-Secret": env.ORIGIN_SECRET },
+        });
+
+        if (!originRes.ok) {
+          return new Response(originRes.body, {
+            status: originRes.status,
+            headers: CORS_HEADERS,
+          });
+        }
+
+        const body = await originRes.text();
+        response = new Response(body, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "public, max-age=300, s-maxage=600",
+            ...CORS_HEADERS,
+          },
+        });
+
+        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+      }
+
+      return response;
+    }
+
     // POST /api/v1/plugins - Submit plugin (forward to origin, update D1 on success)
     if (path === "/api/v1/plugins" && request.method === "POST") {
       const originRes = await proxyToOrigin(request, env);

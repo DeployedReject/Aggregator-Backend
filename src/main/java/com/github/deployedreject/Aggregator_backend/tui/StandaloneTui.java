@@ -78,7 +78,7 @@ public class StandaloneTui {
             title.setForegroundColor(TokyoNightTheme.CYAN);
             mainPanel.addComponent(title);
 
-            Label hotkeyBar = new Label("[S] Promote  [N] Demote  [Space/T] Toggle  [Enter/V] Code  [X/Del] Delete  [P] Sync  [R] Refresh  [Q] Quit");
+            Label hotkeyBar = new Label("[S] Promote  [N] Demote  [Space/T] Toggle  [Enter/V] Code  [A] Ads  [X/Del] Delete  [P] Sync  [R] Refresh  [Q] Quit");
             hotkeyBar.setForegroundColor(TokyoNightTheme.ACCENT);
             mainPanel.addComponent(hotkeyBar);
 
@@ -209,6 +209,10 @@ public class StandaloneTui {
                 }
             };
 
+            Runnable viewAdblockRulesAction = () -> {
+                viewAdblockRules(textGUI, statusLabel);
+            };
+
             Runnable refreshAction = () -> {
                 refreshTableData(statusLabel, table);
             };
@@ -220,6 +224,7 @@ public class StandaloneTui {
             buttonPanel.addComponent(new Button("[N] Demote", demoteAction));
             buttonPanel.addComponent(new Button("[T] Toggle", toggleActiveAction));
             buttonPanel.addComponent(new Button("[V] Code", viewCodeAction));
+            buttonPanel.addComponent(new Button("[A] Ads", viewAdblockRulesAction));
             buttonPanel.addComponent(new Button("[X] Delete", deleteAction));
             buttonPanel.addComponent(new Button("[P] Sync", gitSyncAction));
             buttonPanel.addComponent(new Button("[R] Refresh", refreshAction));
@@ -235,6 +240,7 @@ public class StandaloneTui {
             hotkeys.put('D', toggleActiveAction);
             hotkeys.put(' ', toggleActiveAction);
             hotkeys.put('V', viewCodeAction);
+            hotkeys.put('A', viewAdblockRulesAction);
             hotkeys.put('X', deleteAction);
             hotkeys.put('P', gitSyncAction);
             hotkeys.put('R', refreshAction);
@@ -404,16 +410,16 @@ public class StandaloneTui {
         return null;
     }
 
-    private boolean executeApiCall(String method, String path, String jsonBody, Label statusLabel) {
+    private boolean executeApiCall(String method, String path, String body, Label statusLabel) {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + path))
                     .header("X-Admin-Token", adminToken);
 
             if ("PUT".equalsIgnoreCase(method)) {
-                builder.PUT(HttpRequest.BodyPublishers.noBody());
+                builder.PUT(body != null ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody());
             } else if ("POST".equalsIgnoreCase(method)) {
-                builder.POST(jsonBody != null ? HttpRequest.BodyPublishers.ofString(jsonBody) : HttpRequest.BodyPublishers.noBody());
+                builder.POST(body != null ? HttpRequest.BodyPublishers.ofString(body) : HttpRequest.BodyPublishers.noBody());
             } else if ("DELETE".equalsIgnoreCase(method)) {
                 builder.DELETE();
             }
@@ -428,6 +434,64 @@ public class StandaloneTui {
         } catch (Exception e) {
             setStatus(statusLabel, "Network Error: " + e.getMessage(), TokyoNightTheme.ERROR);
             return false;
+        }
+    }
+
+    private void viewAdblockRules(WindowBasedTextGUI textGUI, Label statusLabel) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/api/v1/admin/adblock/rules"))
+                    .header("X-Admin-Token", adminToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                setStatus(statusLabel, "Could not fetch adblock rules: " + response.body(), TokyoNightTheme.ERROR);
+                return;
+            }
+
+            BasicWindow adsWindow = new BasicWindow("Adblock Rules (ads/blocklist.txt)");
+            adsWindow.setHints(List.of(Window.Hint.CENTERED));
+
+            Panel panel = new Panel(new LinearLayout(Direction.VERTICAL));
+            Label infoLabel = new Label("Edit rules (EasyList syntax: ||domain.com^). Click Save & Push or ESC to exit.");
+            infoLabel.setForegroundColor(TokyoNightTheme.ACCENT);
+            panel.addComponent(infoLabel);
+
+            TextBox rulesBox = new TextBox(new TerminalSize(88, 18), response.body(), TextBox.Style.MULTI_LINE);
+            panel.addComponent(rulesBox.withBorder(Borders.singleLine("Filter Rules")));
+
+            Panel btnPanel = new Panel(new LinearLayout(Direction.HORIZONTAL));
+            btnPanel.addComponent(new Button("[S] Save & Push to Git", () -> {
+                String updatedRules = rulesBox.getText();
+                setStatus(statusLabel, "Saving adblock rules and pushing to Git...", TokyoNightTheme.CYAN);
+                boolean ok = executeApiCall("PUT", "/api/v1/admin/adblock/rules", updatedRules, statusLabel);
+                if (ok) {
+                    adsWindow.close();
+                    setStatus(statusLabel, "Adblock rules saved and pushed to GitHub.", TokyoNightTheme.SUCCESS);
+                }
+            }));
+            btnPanel.addComponent(new Button("[Q / ESC] Close", adsWindow::close));
+            panel.addComponent(btnPanel);
+
+            adsWindow.setComponent(panel);
+
+            adsWindow.addWindowListener(new WindowListenerAdapter() {
+                @Override
+                public void onInput(Window basePane, KeyStroke keyStroke, AtomicBoolean deliver) {
+                    if (keyStroke.getKeyType() == KeyType.Escape) {
+                        deliver.set(false);
+                        basePane.close();
+                    }
+                }
+            });
+
+            textGUI.addWindow(adsWindow);
+            rulesBox.takeFocus();
+
+        } catch (Exception e) {
+            setStatus(statusLabel, "Failed to load adblock rules: " + e.getMessage(), TokyoNightTheme.ERROR);
         }
     }
 
