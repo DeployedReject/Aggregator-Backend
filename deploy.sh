@@ -26,12 +26,15 @@ if [ -d "${APP_DIR}/data/plugins-repo" ]; then
     ls -t "${BACKUP_DIR}/data_snapshots"/plugins_repo_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
 fi
 
-# 3. Pull latest changes if git remote is configured and clean
-echo "[Step 3/5] Checking Git updates..."
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    # Stash any local working state if present
-    git stash -u >/dev/null 2>&1 || true
-    git pull origin main --rebase || true
+# 3. Check for Release Artifact Download (No SSH required)
+echo "[Step 3/5] Checking for latest release artifact..."
+if [ -n "${1:-}" ]; then
+    DOWNLOAD_URL="$1"
+    echo "Downloading new release artifact from: ${DOWNLOAD_URL}"
+    mkdir -p "${APP_DIR}/target"
+    curl -fsSL -o "${APP_DIR}/target/Aggregator-backend-0.0.1-SNAPSHOT.jar.new" "${DOWNLOAD_URL}"
+    mv "${APP_DIR}/target/Aggregator-backend-0.0.1-SNAPSHOT.jar.new" "${APP_DIR}/target/Aggregator-backend-0.0.1-SNAPSHOT.jar"
+    echo "Downloaded and staged artifact to ${APP_DIR}/target/Aggregator-backend-0.0.1-SNAPSHOT.jar"
 fi
 
 # 4. Verify Built Artifact

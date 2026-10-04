@@ -53,16 +53,22 @@ public class WebhookController {
 
     /**
      * Webhook for Backend repository deployments.
-     * Executes deploy.sh on VPS, waiting for build & zero-downtime service reload.
+     * Triggers deploy.sh asynchronously in an isolated systemd unit and responds immediately.
      */
     @PostMapping("/backend-deploy")
     public ResponseEntity<Map<String, Object>> handleBackendDeploy(
+        @RequestBody(required = false) Map<String, Object> body,
         @RequestHeader(value = "X-Deploy-Token", required = false) String deployTokenHeader,
         @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader
     ) {
         validateDeployToken(deployTokenHeader, authHeader);
 
-        log.info("Received GitHub push webhook for Aggregator-Backend. Triggering deployment script.");
+        String downloadUrl = null;
+        if (body != null && body.containsKey("downloadUrl")) {
+            downloadUrl = String.valueOf(body.get("downloadUrl"));
+        }
+
+        log.info("Received GitHub push webhook for Aggregator-Backend. Triggering background deploy.sh. Artifact URL: {}", downloadUrl);
 
         try {
             File deployScript = new File("/home/ubuntu/Aggregator-Backend/deploy.sh");
@@ -78,43 +84,30 @@ public class WebhookController {
                 ));
             }
 
-            ProcessBuilder pb = new ProcessBuilder("/bin/bash", deployScript.getAbsolutePath());
-            pb.directory(deployScript.getParentFile());
-            pb.redirectErrorStream(true);
-
-            Process process = pb.start();
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    output.append(line).append("\n");
-                }
-            }
-
-            int exitCode = process.waitFor();
-            if (exitCode == 0) {
-                log.info("deploy.sh executed successfully.");
-                return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "message", "Aggregator-Backend deployment completed successfully.",
-                    "exitCode", exitCode,
-                    "output", output.toString()
-                ));
+            String unitName = "aggregator-webhook-deploy-" + System.currentTimeMillis();
+            ProcessBuilder pb;
+            if (downloadUrl != null && !downloadUrl.isBlank()) {
+                pb = new ProcessBuilder("sudo", "systemd-run", "--unit=" + unitName, "/bin/bash", deployScript.getAbsolutePath(), downloadUrl.trim());
             } else {
-                log.error("deploy.sh failed with exit code {}: {}", exitCode, output);
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "status", "failed",
-                    "message", "Deployment script returned non-zero exit code: " + exitCode,
-                    "exitCode", exitCode,
-                    "output", output.toString()
-                ));
+                pb = new ProcessBuilder("sudo", "systemd-run", "--unit=" + unitName, "/bin/bash", deployScript.getAbsolutePath());
             }
+            pb.directory(deployScript.getParentFile());
+
+            // Start isolated systemd unit in background
+            pb.start();
+
+            return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "message", "Deployment triggered successfully on origin server. Backup, artifact installation, and service reload started in background.",
+                "unit", unitName,
+                "timestamp", System.currentTimeMillis()
+            ));
 
         } catch (Exception e) {
             log.error("Exception during deployment execution: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "status", "error",
-                "message", "Failed to execute deploy.sh: " + e.getMessage()
+                "message", "Failed to start deploy.sh: " + e.getMessage()
             ));
         }
     }
