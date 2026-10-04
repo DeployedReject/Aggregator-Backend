@@ -151,6 +151,26 @@ export default {
       return jsonResponse({ status: "synced", count: syncedCount });
     }
 
+    // Webhook Route for Plugins Sync (Forward to origin, and sync D1 in background)
+    if (path === "/api/v1/webhook/plugins-sync" && request.method === "POST") {
+      const originRes = await proxyToOrigin(request, env);
+      if (originRes.ok) {
+        ctx.waitUntil(
+          (async () => {
+            // Wait 2 seconds for git pull on origin to settle, then sync D1
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await syncAllFromOrigin(env);
+          })()
+        );
+      }
+      return originRes;
+    }
+
+    // Webhook Route for Backend Deployment (Forward to origin)
+    if (path === "/api/v1/webhook/backend-deploy" && request.method === "POST") {
+      return proxyToOrigin(request, env);
+    }
+
     // GET /api/v1/plugins - Fast Edge listing with D1
     if (path === "/api/v1/plugins" && request.method === "GET") {
       const channel = (url.searchParams.get("channel") || "STABLE").toUpperCase();

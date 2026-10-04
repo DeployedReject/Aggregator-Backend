@@ -69,3 +69,4 @@ app:
     llm-api-token: ${APP_SECURITY_LLM_API_TOKEN:dev-llm-token-12345}
     admin-token: ${APP_SECURITY_ADMIN_TOKEN:aggregator-admin-token}
     origin-secret: ${APP_SECURITY_ORIGIN_SECRET:dev-origin-secret}
+    deploy-token: ${APP_SECURITY_DEPLOY_TOKEN:cf-deploy-7d8a9f1b2c3e4d5a6b7c8d9e0f1a2b3c}

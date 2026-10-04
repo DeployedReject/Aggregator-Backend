@@ -99,6 +99,7 @@ public class AppProperties {
         private String llmApiToken = "dev-llm-token-12345";
         private String adminToken = "aggregator-admin-token";
         private String originSecret = "aggregator-origin-secret-9f8a2c1b4e";
+        private String deployToken = "aggregator-deploy-token-9f8a2c1b4e";
 
         public String getLlmApiToken() { return llmApiToken; }
         public void setLlmApiToken(String llmApiToken) { this.llmApiToken = llmApiToken; }
@@ -108,5 +109,8 @@ public class AppProperties {
 
         public String getOriginSecret() { return originSecret; }
         public void setOriginSecret(String originSecret) { this.originSecret = originSecret; }
+
+        public String getDeployToken() { return deployToken; }
+        public void setDeployToken(String deployToken) { this.deployToken = deployToken; }
     }
 }
