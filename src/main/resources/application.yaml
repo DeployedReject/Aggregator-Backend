@@ -55,7 +55,7 @@ app:
     sync:
       polling-enabled: true
       polling-interval-ms: 300000
-      webhook-secret: ${APP_GIT_WEBHOOK_SECRET:dev-deploy-token}
+      webhook-secret: ${APP_GIT_SYNC_WEBHOOK_SECRET:${APP_GIT_WEBHOOK_SECRET:dev-webhook-secret}}
 
   discord:
     webhook-url: ${APP_DISCORD_WEBHOOK_URL:}
@@ -66,7 +66,7 @@ app:
     min-votes-for-ratio: 5
 
   security:
-    llm-api-token: ${APP_SECURITY_LLM_API_TOKEN:dev-llm-token-12345}
-    admin-token: ${APP_SECURITY_ADMIN_TOKEN:aggregator-admin-token}
-    origin-secret: ${APP_SECURITY_ORIGIN_SECRET:dev-origin-secret}
-    deploy-token: ${APP_SECURITY_DEPLOY_TOKEN:dev-deploy-token}
+    llm-api-token: ${APP_SECURITY_LLM_API_TOKEN:dev-llm-token}
+    admin-token: ${APP_SECURITY_ADMIN_TOKEN:dev-admin-token}
+    origin-secret: ${APP_SECURITY_ORIGIN_SECRET:}
+    deploy-token: ${APP_SECURITY_DEPLOY_TOKEN:}

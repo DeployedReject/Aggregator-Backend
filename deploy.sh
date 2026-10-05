@@ -5,6 +5,13 @@ APP_DIR="/home/ubuntu/Aggregator-Backend"
 BACKUP_DIR="${APP_DIR}/backups"
 TIMESTAMP="$(date +'%Y%m%d_%H%M%S')"
 
+if [ -f "/etc/aggregator-backend.env" ]; then
+    # shellcheck disable=SC1091
+    set -a
+    source /etc/aggregator-backend.env
+    set +a
+fi
+
 echo "=== [Aggregator-Backend] Deployment Started: ${TIMESTAMP} ==="
 
 cd "${APP_DIR}"
@@ -12,7 +19,7 @@ cd "${APP_DIR}"
 # 1. Zero Data Loss Safety: Backup PostgreSQL Database
 echo "[Step 1/5] Backing up PostgreSQL database..."
 mkdir -p "${BACKUP_DIR}"
-PGPASSWORD="aggregator_secret" pg_dump -U aggregator -h localhost aggregator_registry > "${BACKUP_DIR}/db_backup_${TIMESTAMP}.sql"
+PGPASSWORD="${SPRING_DATASOURCE_PASSWORD:-aggregator_secret}" pg_dump -U "${SPRING_DATASOURCE_USERNAME:-aggregator}" -h localhost aggregator_registry > "${BACKUP_DIR}/db_backup_${TIMESTAMP}.sql"
 echo "Database snapshot saved to: ${BACKUP_DIR}/db_backup_${TIMESTAMP}.sql"
 
 # Keep only the last 10 backups to prevent disk overflow
@@ -54,10 +61,19 @@ MAX_ATTEMPTS=30
 ATTEMPT=0
 SUCCESS=false
 
+ORIGIN_SECRET_HEADER=""
+if [ -n "${APP_SECURITY_ORIGIN_SECRET:-}" ]; then
+    ORIGIN_SECRET_HEADER="X-Origin-Secret: ${APP_SECURITY_ORIGIN_SECRET}"
+fi
+
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     sleep 3
     ATTEMPT=$((ATTEMPT + 1))
-    HTTP_STATUS="$(curl -s -o /dev/null -w "%{http_code}" -H "X-Origin-Secret: dev-origin-secret" http://localhost:8080/api/v1/plugins?channel=STABLE || true)"
+    if [ -n "$ORIGIN_SECRET_HEADER" ]; then
+        HTTP_STATUS="$(curl -s -o /dev/null -w "%{http_code}" -H "$ORIGIN_SECRET_HEADER" http://localhost:8080/api/v1/plugins?channel=STABLE || true)"
+    else
+        HTTP_STATUS="$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/plugins?channel=STABLE || true)"
+    fi
     if [ "$HTTP_STATUS" = "200" ]; then
         SUCCESS=true
         break

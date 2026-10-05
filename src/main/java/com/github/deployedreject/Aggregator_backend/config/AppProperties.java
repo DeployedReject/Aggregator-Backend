@@ -60,7 +60,7 @@ public class AppProperties {
         public static class Sync {
             private boolean pollingEnabled = true;
             private long pollingIntervalMs = 300000;
-            private String webhookSecret = "dev-secret-key";
+            private String webhookSecret = "";
 
             public boolean isPollingEnabled() { return pollingEnabled; }
             public void setPollingEnabled(boolean pollingEnabled) { this.pollingEnabled = pollingEnabled; }
@@ -96,10 +96,10 @@ public class AppProperties {
     }
 
     public static class Security {
-        private String llmApiToken = "dev-llm-token-12345";
-        private String adminToken = "aggregator-admin-token";
-        private String originSecret = "aggregator-origin-secret-9f8a2c1b4e";
-        private String deployToken = "aggregator-deploy-token-9f8a2c1b4e";
+        private String llmApiToken = "";
+        private String adminToken = "";
+        private String originSecret = "";
+        private String deployToken = "";
 
         public String getLlmApiToken() { return llmApiToken; }
         public void setLlmApiToken(String llmApiToken) { this.llmApiToken = llmApiToken; }

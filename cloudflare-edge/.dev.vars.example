@@ -1,0 +1,3 @@
+# Cloudflare Worker local development variables (.dev.vars)
+ORIGIN_URL=http://localhost:8080
+ORIGIN_SECRET=dev-origin-secret
