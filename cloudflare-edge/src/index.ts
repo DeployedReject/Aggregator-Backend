@@ -145,6 +145,64 @@ export default {
       });
     }
 
+    // Edge CORS & DNS Proxy for Generator Probe & Sandbox
+    if (path === "/api/v1/proxy") {
+      const targetUrl = url.searchParams.get("url");
+      if (!targetUrl) {
+        return jsonResponse({ error: "Missing required 'url' query parameter" }, 400);
+      }
+
+      try {
+        const parsedTarget = new URL(targetUrl);
+        if (parsedTarget.protocol !== "http:" && parsedTarget.protocol !== "https:") {
+          return jsonResponse({ error: "Invalid target URL scheme. Only http and https allowed." }, 400);
+        }
+
+        const forwardHeaders = new Headers();
+        const allowedHeaders = ["accept", "content-type", "user-agent", "x-requested-with", "authorization", "referer", "origin"];
+        for (const h of allowedHeaders) {
+          const v = request.headers.get(h);
+          if (v) forwardHeaders.set(h, v);
+        }
+        if (!forwardHeaders.has("user-agent")) {
+          forwardHeaders.set(
+            "user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+          );
+        }
+        if (!forwardHeaders.has("accept")) {
+          forwardHeaders.set("accept", "*/*");
+        }
+
+        const init: RequestInit = {
+          method: request.method,
+          headers: forwardHeaders,
+          redirect: "follow",
+        };
+
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          init.body = request.body;
+          // @ts-ignore
+          init.duplex = "half";
+        }
+
+        const targetRes = await fetch(targetUrl, init);
+        const resHeaders = new Headers(targetRes.headers);
+        for (const [key, val] of Object.entries(CORS_HEADERS)) {
+          resHeaders.set(key, val);
+        }
+        resHeaders.delete("content-encoding");
+
+        return new Response(targetRes.body, {
+          status: targetRes.status,
+          statusText: targetRes.statusText,
+          headers: resHeaders,
+        });
+      } catch (err: any) {
+        return jsonResponse({ error: "Proxy Fetch Failed", message: err.message }, 502);
+      }
+    }
+
     // Edge Sync Route (trigger refresh of D1 cache from origin)
     if (path === "/api/v1/edge/sync" && request.method === "POST") {
       const syncedCount = await syncAllFromOrigin(env);
