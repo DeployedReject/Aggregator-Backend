@@ -252,8 +252,15 @@ export default {
       return proxyToOrigin(request, env);
     }
 
-    // GET /api/v1/plugins - Fast Edge listing with D1
+    // GET /api/v1/plugins - Fast Edge listing with D1 and Cache API
     if (path === "/api/v1/plugins" && request.method === "GET") {
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString(), request);
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
       const channel = (url.searchParams.get("channel") || "STABLE").toUpperCase();
       const query = url.searchParams.get("query");
       const page = parseInt(url.searchParams.get("page") || "0", 10);
@@ -288,9 +295,11 @@ export default {
             if (originRes.ok) {
               ctx.waitUntil(syncAllFromOrigin(env));
               const originData = await originRes.json();
-              return jsonResponse(originData, 200, {
-                "Cache-Control": "public, max-age=30, s-maxage=60",
+              const seedResponse = jsonResponse(originData, 200, {
+                "Cache-Control": "public, max-age=60, s-maxage=120",
               });
+              ctx.waitUntil(cache.put(cacheKey, seedResponse.clone()));
+              return seedResponse;
             }
           } catch (e) {
             console.error("Origin seed fetch failed:", e);
@@ -298,7 +307,7 @@ export default {
         }
 
         if (total === 0) {
-          return jsonResponse({
+          const emptyResponse = jsonResponse({
             content: [],
             page,
             size,
@@ -308,6 +317,8 @@ export default {
           }, 200, {
             "Cache-Control": "public, max-age=30, s-maxage=60",
           });
+          ctx.waitUntil(cache.put(cacheKey, emptyResponse.clone()));
+          return emptyResponse;
         }
 
         sql += ` ORDER BY likes DESC LIMIT ? OFFSET ?`;
@@ -317,7 +328,7 @@ export default {
         const content = (rows.results || []).map(toPluginResponse);
 
         const totalPages = Math.ceil(total / size);
-        return jsonResponse({
+        const finalResponse = jsonResponse({
           content,
           page,
           size,
@@ -325,28 +336,46 @@ export default {
           totalPages,
           last: page >= totalPages - 1,
         }, 200, {
-          "Cache-Control": "public, max-age=30, s-maxage=60",
+          "Cache-Control": "public, max-age=60, s-maxage=120",
         });
+        ctx.waitUntil(cache.put(cacheKey, finalResponse.clone()));
+        return finalResponse;
       } catch (err: any) {
-        console.error("D1 query error, falling back to origin:", err);
-        return proxyToOrigin(request, env);
+        console.error("D1 query error (exceeded quota or error), falling back to origin:", err);
+        if (env.ORIGIN_URL) {
+          return proxyToOrigin(request, env);
+        }
+        return jsonResponse({ error: "Database Unavailable", message: err.message }, 503);
       }
     }
 
-    // GET /api/v1/plugins/:id - Plugin details
+    // GET /api/v1/plugins/:id - Plugin details with Cache API and origin fallback
     const pluginDetailMatch = path.match(/^\/api\/v1\/plugins\/([a-zA-Z0-9_-]+)$/);
     if (pluginDetailMatch && request.method === "GET") {
       const pluginId = pluginDetailMatch[1];
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString(), request);
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
       try {
         const row = await env.DB.prepare("SELECT * FROM plugins WHERE id = ?").bind(pluginId).first();
         if (row) {
-          return jsonResponse(toPluginResponse(row), 200, {
-            "Cache-Control": "public, max-age=60, s-maxage=120",
+          const detailRes = jsonResponse(toPluginResponse(row), 200, {
+            "Cache-Control": "public, max-age=120, s-maxage=300",
           });
+          ctx.waitUntil(cache.put(cacheKey, detailRes.clone()));
+          return detailRes;
         }
-      } catch (err) {
-        console.error("D1 fetch single plugin error:", err);
+      } catch (err: any) {
+        console.error("D1 fetch single plugin error, falling back to origin:", err);
+        if (env.ORIGIN_URL) {
+          return proxyToOrigin(request, env);
+        }
       }
+
       if (env.ORIGIN_URL) {
         return proxyToOrigin(request, env);
       }
