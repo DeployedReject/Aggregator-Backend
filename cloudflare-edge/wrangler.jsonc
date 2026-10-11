@@ -13,9 +13,7 @@
       "database_id": "3930ed97-b6ab-4daf-85e8-a4e0170b0f54"
     }
   ],
-  "vars": {
-    "ORIGIN_URL": ""
-  },
+  "vars": {},
   "triggers": {
     "crons": ["*/5 * * * *"]
   }

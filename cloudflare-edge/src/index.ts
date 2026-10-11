@@ -256,18 +256,35 @@ export default {
         const countRes = await env.DB.prepare(countQuery).bind(...params).first<{ total: number }>();
         const total = countRes?.total || 0;
 
-        // If D1 is empty, fallback to origin and seed D1 in background
-        if (total === 0) {
-          const originRes = await fetch(`${env.ORIGIN_URL}${url.pathname}${url.search}`, {
-            headers: { "X-Origin-Secret": env.ORIGIN_SECRET },
-          });
-          if (originRes.ok) {
-            ctx.waitUntil(syncAllFromOrigin(env));
-            const originData = await originRes.json();
-            return jsonResponse(originData, 200, {
-              "Cache-Control": "public, max-age=30, s-maxage=60",
+        // If D1 is completely empty and no search filter was applied, attempt initial seed from origin if configured
+        if (total === 0 && !query && env.ORIGIN_URL) {
+          try {
+            const originRes = await fetch(`${env.ORIGIN_URL}${url.pathname}${url.search}`, {
+              headers: { "X-Origin-Secret": env.ORIGIN_SECRET || "" },
             });
+            if (originRes.ok) {
+              ctx.waitUntil(syncAllFromOrigin(env));
+              const originData = await originRes.json();
+              return jsonResponse(originData, 200, {
+                "Cache-Control": "public, max-age=30, s-maxage=60",
+              });
+            }
+          } catch (e) {
+            console.error("Origin seed fetch failed:", e);
           }
+        }
+
+        if (total === 0) {
+          return jsonResponse({
+            content: [],
+            page,
+            size,
+            totalElements: 0,
+            totalPages: 0,
+            last: true,
+          }, 200, {
+            "Cache-Control": "public, max-age=30, s-maxage=60",
+          });
         }
 
         sql += ` ORDER BY likes DESC LIMIT ? OFFSET ?`;
@@ -307,40 +324,61 @@ export default {
       } catch (err) {
         console.error("D1 fetch single plugin error:", err);
       }
-      return proxyToOrigin(request, env);
+      if (env.ORIGIN_URL) {
+        return proxyToOrigin(request, env);
+      }
+      return jsonResponse({ error: "Not Found", message: `Plugin '${pluginId}' not found.` }, 404);
     }
 
     // GET /api/v1/plugins/:id/download - Edge-cached plugin script
     const downloadMatch = path.match(/^\/api\/v1\/plugins\/([a-zA-Z0-9_-]+)\/download$/);
     if (downloadMatch && request.method === "GET") {
+      const pluginId = downloadMatch[1];
       const cache = caches.default;
       const cacheKey = new Request(url.toString(), request);
       let response = await cache.match(cacheKey);
 
       if (!response) {
-        const originUrl = `${env.ORIGIN_URL}${path}`;
-        const originRes = await fetch(originUrl, {
-          headers: { "X-Origin-Secret": env.ORIGIN_SECRET },
-        });
-
-        if (!originRes.ok) {
-          return new Response(originRes.body, {
-            status: originRes.status,
-            headers: CORS_HEADERS,
-          });
+        try {
+          const fileRow = await env.DB.prepare("SELECT code FROM plugin_files WHERE id = ?").bind(pluginId).first<{ code: string }>();
+          if (fileRow && fileRow.code) {
+            response = new Response(fileRow.code, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/javascript; charset=utf-8",
+                "Cache-Control": "public, max-age=3600, s-maxage=86400",
+                ...CORS_HEADERS,
+              },
+            });
+            ctx.waitUntil(cache.put(cacheKey, response.clone()));
+            return response;
+          }
+        } catch (err) {
+          console.error("D1 plugin_files fetch error:", err);
         }
 
-        const body = await originRes.text();
-        response = new Response(body, {
-          status: 200,
-          headers: {
-            "Content-Type": "application/javascript; charset=utf-8",
-            "Cache-Control": "public, max-age=3600, s-maxage=86400",
-            ...CORS_HEADERS,
-          },
-        });
+        if (env.ORIGIN_URL) {
+          const originUrl = `${env.ORIGIN_URL}${path}`;
+          const originRes = await fetch(originUrl, {
+            headers: { "X-Origin-Secret": env.ORIGIN_SECRET || "" },
+          });
 
-        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+          if (originRes.ok) {
+            const body = await originRes.text();
+            response = new Response(body, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/javascript; charset=utf-8",
+                "Cache-Control": "public, max-age=3600, s-maxage=86400",
+                ...CORS_HEADERS,
+              },
+            });
+            ctx.waitUntil(cache.put(cacheKey, response.clone()));
+            return response;
+          }
+        }
+
+        return jsonResponse({ error: "Plugin not found", message: `Plugin '${pluginId}' code not found.` }, 404);
       }
 
       return response;
@@ -425,11 +463,14 @@ export default {
 };
 
 async function proxyToOrigin(request: Request, env: Env): Promise<Response> {
+  if (!env.ORIGIN_URL) {
+    return jsonResponse({ error: "Origin Unavailable", message: "No upstream origin server configured." }, 503);
+  }
   const url = new URL(request.url);
   const targetUrl = `${env.ORIGIN_URL}${url.pathname}${url.search}`;
 
   const headers = new Headers(request.headers);
-  headers.set("X-Origin-Secret", env.ORIGIN_SECRET);
+  headers.set("X-Origin-Secret", env.ORIGIN_SECRET || "");
   headers.delete("host");
 
   const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip");
