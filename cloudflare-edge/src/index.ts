@@ -70,15 +70,20 @@ async function upsertPluginInD1(db: D1Database, p: any) {
   ).run();
 }
 
-async function syncAllFromOrigin(env: Env): Promise<number> {
+async function syncAllFromOrigin(env: Env): Promise<{ count: number; errors: string[] }> {
   let count = 0;
   const activeIds = new Set<string>();
   let successfulChannels = 0;
+  const errors: string[] = [];
+
+  if (!env.ORIGIN_URL) {
+    return { count: 0, errors: ["ORIGIN_URL is not configured"] };
+  }
 
   for (const channel of ["STABLE", "NIGHTLY"]) {
     try {
       const originRes = await fetch(`${env.ORIGIN_URL}/api/v1/plugins?channel=${channel}&size=100`, {
-        headers: { "X-Origin-Secret": env.ORIGIN_SECRET },
+        headers: { "X-Origin-Secret": env.ORIGIN_SECRET || "" },
       });
       if (originRes.ok) {
         successfulChannels++;
@@ -88,10 +93,27 @@ async function syncAllFromOrigin(env: Env): Promise<number> {
           activeIds.add(item.id);
           await upsertPluginInD1(env.DB, item);
           count++;
+
+          // Also fetch plugin code and sync into plugin_files in D1
+          try {
+            const dlRes = await fetch(`${env.ORIGIN_URL}/api/v1/plugins/${item.id}/download`, {
+              headers: { "X-Origin-Secret": env.ORIGIN_SECRET || "" },
+            });
+            if (dlRes.ok) {
+              const code = await dlRes.text();
+              await env.DB.prepare(
+                "INSERT INTO plugin_files (id, code, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET code = excluded.code, updated_at = excluded.updated_at"
+              ).bind(item.id, code).run();
+            }
+          } catch (dlErr: any) {
+            console.error(`Download sync error for ${item.id}:`, dlErr);
+          }
         }
+      } else {
+        errors.push(`Channel ${channel} returned HTTP ${originRes.status}: ${await originRes.text()}`);
       }
-    } catch (err) {
-      console.error(`Sync error for channel ${channel}:`, err);
+    } catch (err: any) {
+      errors.push(`Sync error for channel ${channel}: ${err.message}`);
     }
   }
 
@@ -103,14 +125,15 @@ async function syncAllFromOrigin(env: Env): Promise<number> {
         const id = String(row.id);
         if (!activeIds.has(id)) {
           await env.DB.prepare("DELETE FROM plugins WHERE id = ?").bind(id).run();
+          await env.DB.prepare("DELETE FROM plugin_files WHERE id = ?").bind(id).run();
         }
       }
-    } catch (err) {
-      console.error("D1 pruning error:", err);
+    } catch (err: any) {
+      errors.push(`D1 pruning error: ${err.message}`);
     }
   }
 
-  return count;
+  return { count, errors };
 }
 
 export default {
@@ -205,8 +228,8 @@ export default {
 
     // Edge Sync Route (trigger refresh of D1 cache from origin)
     if (path === "/api/v1/edge/sync" && request.method === "POST") {
-      const syncedCount = await syncAllFromOrigin(env);
-      return jsonResponse({ status: "synced", count: syncedCount });
+      const syncResult = await syncAllFromOrigin(env);
+      return jsonResponse({ status: "synced", count: syncResult.count, errors: syncResult.errors });
     }
 
     // Webhook Route for Plugins Sync (Forward to origin, and sync D1 in background)
