@@ -48,8 +48,8 @@ public class OriginSecurityFilter extends OncePerRequestFilter {
 
         String remoteAddr = request.getRemoteAddr();
 
-        // Local loopback calls (TUI, local admin scripts, internal jobs) are always permitted
-        if (isLoopback(remoteAddr)) {
+        // OPTIONS preflight requests and local loopback calls are always permitted
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod()) || isLoopback(remoteAddr)) {
             filterChain.doFilter(request, response);
             return;
         }

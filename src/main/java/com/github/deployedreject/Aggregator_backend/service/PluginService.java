@@ -76,9 +76,14 @@ public class PluginService {
                 .channel(PluginChannel.NIGHTLY)
                 .likesCount(0)
                 .dislikesCount(0)
-                .isActive(true)
+                .isActive(false) // Disabled by default until explicitly approved by admin
                 .build()
         );
+
+        // Newly submitted plugins or updates require admin approval
+        if (!plugin.isActive()) {
+            plugin.setActive(false);
+        }
 
         plugin.setName(req.name().trim());
         plugin.setDescription(req.description() != null ? req.description().trim() : "");

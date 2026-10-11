@@ -46,4 +46,22 @@ public class AdblockController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read adblock rules");
         }
     }
+
+    @org.springframework.web.bind.annotation.PostMapping("/report")
+    public ResponseEntity<com.github.deployedreject.Aggregator_backend.dto.AdblockReportResponse> reportAdblockDomains(
+        @org.springframework.web.bind.annotation.RequestBody com.github.deployedreject.Aggregator_backend.dto.AdblockReportRequest request
+    ) {
+        if (request == null || request.getDomains() == null || request.getDomains().isEmpty()) {
+            return ResponseEntity.badRequest().body(new com.github.deployedreject.Aggregator_backend.dto.AdblockReportResponse("NO_DOMAINS", 0, 0));
+        }
+        try {
+            int added = gitSyncService.addAdblockDomainsAndCommit(request.getDomains());
+            int total = gitSyncService.readAdblockRules().size();
+            log.info("Reported {} ad domains, {} new domains added to blocklist (total: {})", request.getDomains().size(), added, total);
+            return ResponseEntity.ok(new com.github.deployedreject.Aggregator_backend.dto.AdblockReportResponse("OK", added, total));
+        } catch (Exception e) {
+            log.error("Failed to append reported adblock domains: {}", e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to update adblock rules: " + e.getMessage());
+        }
+    }
 }

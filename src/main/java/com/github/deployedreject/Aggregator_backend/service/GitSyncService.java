@@ -334,6 +334,50 @@ public class GitSyncService {
         return Files.readString(path);
     }
 
+    public synchronized int addAdblockDomainsAndCommit(List<String> incomingDomains) throws IOException, GitAPIException {
+        if (incomingDomains == null || incomingDomains.isEmpty()) {
+            return 0;
+        }
+
+        Path path = Paths.get(appProperties.getGit().getRepoPath(), "ads", "blocklist.txt");
+        List<String> existingLines = Files.exists(path) ? Files.readAllLines(path) : new ArrayList<>();
+        java.util.Set<String> existingNormalized = new java.util.HashSet<>();
+
+        for (String line : existingLines) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty() && !trimmed.startsWith("!") && !trimmed.startsWith("#")) {
+                String norm = trimmed.replace("||", "").replace("^", "").toLowerCase();
+                existingNormalized.add(norm);
+            }
+        }
+
+        List<String> addedRules = new ArrayList<>();
+        for (String domain : incomingDomains) {
+            if (domain == null) continue;
+            String cleaned = domain.trim().toLowerCase()
+                .replaceAll("^https?://", "")
+                .replaceAll("^www\\.", "")
+                .replaceAll("/.*$", "")
+                .replace("||", "")
+                .replace("^", "");
+            if (!cleaned.isBlank() && cleaned.contains(".") && !existingNormalized.contains(cleaned)) {
+                existingNormalized.add(cleaned);
+                addedRules.add("||" + cleaned + "^");
+            }
+        }
+
+        if (addedRules.isEmpty()) {
+            return 0;
+        }
+
+        List<String> updatedLines = new ArrayList<>(existingLines);
+        updatedLines.addAll(addedRules);
+        String updatedContent = String.join("\n", updatedLines) + "\n";
+
+        saveAdblockRulesAndCommit(updatedContent, "chore(ads): add " + addedRules.size() + " ad domains via AI/community report");
+        return addedRules.size();
+    }
+
     public synchronized void saveAdblockRulesAndCommit(String rawContent, String commitMessage) throws IOException, GitAPIException {
         File repoDir = new File(appProperties.getGit().getRepoPath());
         File adsDir = new File(repoDir, "ads");
